@@ -38,15 +38,29 @@ The goal: get `DEP`'s changes onto the **same base** as `WORK` before they meet.
 
 ### Option 1 — Land `DEP` on its own first (preferred)
 
-If `DEP` is genuinely ready, merge it through its normal PR so it becomes part of a
-release, then have `WORK` pick it up from the shared base.
+If `DEP` is genuinely ready, land it through a **PR into the shared release branch** so it
+becomes part of a release, then have `WORK` pick it up from that shared base. Shared
+release branches change only through reviewed, CI-gated PRs — never a direct `git push`.
 
-- If `DEP` belongs on the newer line, **retarget/rebase it onto `release-new`** (Option 2)
-  and merge it there.
-- Once it's landed, `WORK` just merges `release-new` normally (see `MERGE_RUNBOOK.md`) and
-  the dependency arrives with no cross-line baggage.
+```bash
+git fetch origin
+git switch DEP
+git push -u origin DEP          # publish DEP if it isn't already
+# open a PR:  DEP  ->  release-new   (let review + CI run, then merge)
+```
 
-This keeps history linear and means you resolve conflicts **once**, in `DEP`'s own PR,
+- If `DEP` belongs on the newer line but is still based on `release-old`, **retarget/rebase
+  it onto `release-new`** first (Option 2), then open the PR against `release-new`.
+- Once the PR has landed, `WORK` just picks the dependency up from its base — a private
+  operation on your own branch, so a plain merge is fine here:
+
+  ```bash
+  git fetch origin
+  git switch WORK
+  git merge origin/release-new   # see MERGE_RUNBOOK.md; dependency arrives with no cross-line baggage
+  ```
+
+This keeps history connected and means you resolve conflicts **once**, in `DEP`'s own PR,
 instead of repeatedly in `WORK`.
 
 ### Option 2 — Rebase `DEP` onto the newer release, then base `WORK` on it
