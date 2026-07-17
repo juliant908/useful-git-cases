@@ -145,5 +145,50 @@ PR merges cleanly.
 - **Keep feature branches short-lived.** The longer two siblings live in parallel, the
   more the shared component drifts apart.
 
+---
+
+## How to avoid stacking a branch on another feature's unlanded work
+
+Stacking (branching off a feature that hasn't merged yet) is convenient but dangerous: if
+the base is reverted or rebased, your branch inherits the damage — that's how the
+`fc-feedback-message` component was lost (see `LOST_CHANGES.md`). Keep branches independent
+unless you deliberately choose otherwise.
+
+### 1. Branch from a landed, shared base — not from another feature
+
+```bash
+git fetch origin
+git switch -c FEATURE origin/release-vX.Y.Z     # base = the shared release, NOT a feature branch
+```
+
+### 2. Sanity-check your base
+
+```bash
+# Unlanded commits I'm carrying beyond the release:
+git log --oneline origin/release-vX.Y.Z..FEATURE
+
+# Am I sitting on top of another feature's un-landed tip?
+git merge-base --is-ancestor origin/OTHER_FEATURE FEATURE && echo "I depend on OTHER_FEATURE's unlanded work"
+```
+
+### 3. Decide by whether the dependency is real
+
+- **Don't actually need it** → branch from the release. Done.
+- **Need only a *shared component*** → extract it to its own branch and land it first (the
+  "single source of truth" pattern at the top of this file). Both features then branch off
+  the updated release and the shared code no longer conflicts *or* stacks.
+- **Genuinely must build on unlanded work now** → stack *consciously*: one level deep,
+  short-lived, land the base first, and rebase off it the moment it lands:
+
+  ```bash
+  git rebase --onto origin/release-vX.Y.Z origin/SHARED FEATURE
+  ```
+
+  Never `git revert` the base merge while something is stacked on it.
+
+**Rule of thumb:** branch from something stable and shared. "I'll just branch off my other
+feature" is a smell — either the shared part should be its own landed branch, or you're
+accepting a deliberate, short, ordered stack, never an accidental one.
+
 See `MERGE_RUNBOOK.md` for the mechanical, step-by-step conflict resolution once a merge
-is unavoidable.
+is unavoidable, and `LOST_CHANGES.md` for what happens when a stacked base gets reverted.

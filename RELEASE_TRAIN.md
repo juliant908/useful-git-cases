@@ -51,14 +51,24 @@ The whole problem "untangles" the moment `release-upper` sits on top of `release
 
 ### 1. Bring the dependency forward: merge `release-lower` into `release-upper`
 
+Do the forward-merge on a **dedicated integration branch** and land it through a **PR**,
+never by pushing straight to the release branch:
+
 ```bash
 git fetch origin
-git checkout release-upper
+git switch -c integrate/release-lower-into-release-upper origin/release-upper
 git merge origin/release-lower       # resolve per MERGE_RUNBOOK.md if needed
-git push origin release-upper
+git push -u origin integrate/release-lower-into-release-upper
+# then open a PR:  integrate/release-lower-into-release-upper  ->  release-upper
 ```
 
-After this, the chip component from `v1.2.0` exists on `v1.3.0`. This is a real,
+> **Why not just `git checkout release-upper && git merge && git push`?**
+> Release branches are shared and protected. A direct push bypasses review and CI, and (if
+> protection is on) will simply be rejected. Routing the merge through an integration
+> branch + PR keeps it reviewed, CI-gated, and auditable. This repo already works this way
+> — see history like `Merge pull request #242 from wbd-msc/build-release-v1.1.3`.
+
+Once the PR merges, the chip component from `v1.2.0` exists on `v1.3.0`. It's a real,
 history-connected merge — not a copy — so when `v1.2.0` later reaches `main` and `v1.3.0`
 follows, the lines converge cleanly with nothing duplicated.
 
@@ -75,16 +85,26 @@ git checkout -b FEATURE origin/release-upper
 ### 3. Keep the lines in sync while both are in flight
 
 `release-lower` will keep changing during its QA/deploy cycle. Periodically forward-merge
-so `release-upper` (and your `FEATURE`) don't drift from the chip's final form:
+so `release-upper` (and your `FEATURE`) don't drift from the chip's final form. Each
+`release-lower -> release-upper` sync goes through the same integration-branch + PR flow
+from step 1:
 
 ```bash
-git checkout release-upper
+# Repeat the step-1 flow whenever release-lower moves:
+git fetch origin
+git switch -c integrate/release-lower-into-release-upper origin/release-upper
 git merge origin/release-lower
-git push origin release-upper
+git push -u origin integrate/release-lower-into-release-upper
+# open PR -> release-upper, let CI + review run, then merge
 
-git checkout FEATURE
-git merge origin/release-upper     # or rebase while FEATURE is still private
+# Your own feature just follows its (now-updated) base:
+git switch FEATURE
+git merge origin/release-upper     # or rebase while FEATURE is still private/unpushed
 ```
+
+Pulling the updated `release-upper` into your own `FEATURE` is a private-branch operation,
+so a plain `merge`/`rebase` is fine there — the PR gate only matters for the shared release
+branches themselves.
 
 ### 4. Let the train run its course
 
@@ -107,6 +127,8 @@ conflicts about it.
   that leaks unreleased v1.3.0 work into the v1.2.0 release.
 - **Don't hand-copy files between lines.** Copies aren't tracked as the same history and
   reintroduce the divergence you're trying to avoid.
+- **Don't push a forward-merge straight to a shared release branch.** Always route it
+  through an integration branch + PR so review and CI run before it lands.
 
 ---
 

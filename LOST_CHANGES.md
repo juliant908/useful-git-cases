@@ -126,5 +126,55 @@ git add -A && git commit -m "Restore feedback-message lost by merge revert"
   like any other change, rather than an ad-hoc `git revert` of a big merge during release
   crunch.
 
+---
+
+## How to avoid stacking a branch on another feature's unlanded work
+
+The root of this particular incident is topology: `OTHER` (`MSC-213753`) was built on top
+of `FEATURE` (`MSC-212947`) *before `FEATURE` had landed*, so reverting `OTHER`'s merge
+deleted `FEATURE`'s files. Avoiding that is about two things — noticing when you're about
+to stack, and choosing a topology that keeps branches independent.
+
+### 1. Branch from a landed, shared base — not from another feature
+
+```bash
+git fetch origin
+git switch -c MSC-NEW origin/release-vX.Y.Z     # base = the shared release, NOT a feature branch
+```
+
+### 2. Sanity-check what you're actually built on
+
+```bash
+# Unlanded commits I'm carrying that the release doesn't have:
+git log --oneline origin/release-vX.Y.Z..MSC-NEW
+
+# Am I sitting on top of another feature's un-landed tip?
+git merge-base --is-ancestor origin/OTHER MSC-NEW && echo "I depend on OTHER's unlanded work"
+```
+
+If that last line prints, you've stacked — the same shape that caused this incident.
+
+### 3. Decide by whether you truly depend on the other work
+
+- **You don't actually need it** → just branch from the release (most common; the overlap
+  felt convenient but wasn't required).
+- **You need a *shared component*, not the whole feature** → extract it into its own tiny
+  branch, land that first, then branch off the updated release (see
+  `CONFLICT_AVOIDANCE.md`). The dependency stops being "unlanded."
+- **You genuinely must build on unlanded work now** → stack *consciously*: keep it one
+  level deep and short-lived, land in dependency order (base merges first), and rebase off
+  the temporary base the moment it lands:
+
+  ```bash
+  git rebase --onto origin/release-vX.Y.Z origin/MSC-BASE MSC-NEW
+  ```
+
+  And **never `git revert` the base merge while something is stacked on it** — that is the
+  exact trap documented above.
+
+**Rule of thumb:** branch from something stable and shared. Treat "I'll just branch off my
+other feature" as a smell that means either the shared part should be its own landed branch
+or you're accepting a deliberate, short, ordered stack — never an accidental one.
+
 See `MERGE_RUNBOOK.md` for mechanical conflict resolution and `CONFLICT_AVOIDANCE.md` /
 `RELEASE_TRAIN.md` for branch-topology guidance that keeps you out of this situation.
