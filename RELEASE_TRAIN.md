@@ -146,6 +146,67 @@ conflicts about it.
   git ls-tree -r --name-only origin/release-upper | grep -i chip
   ```
 
+---
+
+## Special case: bringing `main` up into a release line ("get up to date with main")
+
+Sometimes `main` moves ahead of a release line — e.g. `v1.2.0` shipped and merged to
+`main`, while your `release-v1.3.0` was cut from the older `v1.1.2` line and never got
+`v1.2.0`'s content. To update `release-v1.3.0`, you **merge `main` into it** — you do *not*
+rebase it.
+
+### Use merge, never rebase
+
+`git rebase release-v1.3.0` onto `main` **rewrites every commit** on the release line
+(new SHAs). Since `release-v1.3.0` is shared/published, republishing then needs
+`git push --force`, which breaks every open PR targeting it and every branch based on it.
+It also forces you to resolve the same conflicts once *per replayed commit*.
+
+A **merge** brings `main`'s state in as a single merge commit, keeps existing SHAs, needs
+no force-push, and resolves conflicts **once**.
+
+```bash
+# If you find yourself mid-rebase of a release line, back out first:
+git rebase --abort
+
+git fetch origin
+git switch release-vX.Y.Z          # e.g. release-v1.3.0
+git merge origin/main              # single merge commit; resolve per MERGE_RUNBOOK.md
+```
+
+> On a protected release branch, do this on an integration branch + PR (step 1 pattern)
+> rather than committing and pushing straight to the release.
+
+### Expect real refactor divergence, not just generated-file noise
+
+Because `main` and the release line evolved independently, this merge can surface genuine
+source conflicts on top of the usual generated files — most notably **rename/rename**
+conflicts where the same original file was refactored differently on each side (e.g. the
+old `layout/chips` test became `layout/avatar` on `main` but `forms/input-chips` on the
+release line). Resolve those by **keeping both** results:
+
+```bash
+# each side's renamed file already exists in the working tree with its own content —
+# strip any conflict markers so each file keeps only its own side, then:
+git add packages/core/src/components/forms/input-chips/test/fc-input-chips.e2e.ts   # ours
+git add packages/core/src/components/layout/avatar/test/fc-avatar.e2e.ts            # main's
+git rm  packages/core/src/components/layout/chips/test/fc-chips.e2e.ts              # the shared original
+```
+
+Then take `main`'s side for version/lock files, regenerate the Stencil docs, and verify
+both lines' components ended up present before committing:
+
+```bash
+node -e "const d=require('fs').readFileSync('packages/core/docs/docs.json','utf8'); \
+  console.log('fc-avatar', d.includes('\"fc-avatar\"'), 'fc-input-chips', d.includes('\"fc-input-chips\"'))"
+```
+
+This is the sibling-component pattern from `CONFLICT_AVOIDANCE.md` showing up across the
+`main` ↔ release boundary: the same origin file diverging into two components. Merging
+(not rebasing) keeps both histories connected so it resolves cleanly and only once.
+
+---
+
 See `CONFLICT_AVOIDANCE_2.md` for the single-branch cross-line case, `MERGE_RUNBOOK.md`
 for mechanical conflict resolution, and `LOST_CHANGES.md` for why reverting merges across
 these lines can make content disappear.
